@@ -113,7 +113,42 @@
    - 菜单行为（`customNav`、`CUSTOM_MENU`）
    - 公告、广告、插件槽、联系卡
 
-## 7）Fuwari 迁移说明
+## 7）联系邮箱（CONTACT_EMAIL）约定
+
+环境变量 `NEXT_PUBLIC_CONTACT_EMAIL` 会在构建阶段写入 `conf/contact.config.js`，并以 Base64 形式保存在 `siteConfig('CONTACT_EMAIL')` 中，用于避免在静态页面里直接暴露明文邮箱。迁移或新增主题时请务必按用途选用下列方式，否则会出现「mailto 乱码」或 Gravatar 不匹配等问题。
+
+| 场景 | 正确做法 | 错误示例 |
+| --- | --- | --- |
+| 图标/链接点击打开系统邮件客户端 | 使用 `handleEmailClick`（见下） | `href={\`mailto:${siteConfig('CONTACT_EMAIL')}\`}` |
+| 页脚、文案中展示邮箱地址 | `resolveContactEmail(siteConfig('CONTACT_EMAIL'))` | 直接渲染 `siteConfig('CONTACT_EMAIL')` |
+| Gravatar 等需要邮箱 md5 | 对 `resolveContactEmail` 的结果取小写再哈希 | 对密文做 `md5` |
+| `security.txt` 等服务端生成的联系行 | `resolveContactEmail` 后再写入 | 把密文写进 `mailto:` |
+
+**点击发邮（推荐与 `themes/next/components/SocialButton.js` 保持一致）：**
+
+```javascript
+import { useRef } from 'react'
+import { handleEmailClick } from '@/lib/plugins/mailEncrypt'
+import { siteConfig } from '@/lib/config'
+
+const emailIcon = useRef(null)
+const CONTACT_EMAIL = siteConfig('CONTACT_EMAIL')
+
+// ...
+{CONTACT_EMAIL && (
+  <a
+    onClick={e => handleEmailClick(e, emailIcon, CONTACT_EMAIL)}
+    title='email'
+    className='cursor-pointer'
+    ref={emailIcon}>
+    {/* icon */}
+  </a>
+)}
+```
+
+实现位于 `lib/plugins/mailEncrypt.js`：`handleEmailClick`、`decryptEmail`、`resolveContactEmail`。
+
+## 8）Fuwari 迁移说明
 
 `themes/fuwari` 目前已落地：
 
@@ -130,8 +165,9 @@
 - 深色模式与全局状态不一致。
 - 缺少 `post?.toc`、`notice?.blockMap` 等空值保护。
 - 新增功能未透出配置开关。
+- 联系邮箱使用 `mailto:` 直链密文或未使用 `handleEmailClick` / `resolveContactEmail`（参见上文第 7 节）。
 
-## 9）高还原度检查清单（以 Fuwari 为例）
+## 10）高还原度检查清单（以 Fuwari 为例）
 
 - **布局方向**：桌面端默认应为“左侧功能区 + 右侧内容流”。
 - **Hero 全宽**：避免 `calc(50% - 50vw)` 在滚动条场景导致偏移，优先使用居中平移方案。

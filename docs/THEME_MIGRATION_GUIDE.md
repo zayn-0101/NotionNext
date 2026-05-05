@@ -113,7 +113,42 @@ Do not scatter constants in component bodies.
    - Menu behaviors (`customNav`, `CUSTOM_MENU`)
    - Notice, ads, plugin slot, contact card
 
-## 7) Fuwari Migration Notes
+## 7) Contact Email (`CONTACT_EMAIL`) Conventions
+
+The `NEXT_PUBLIC_CONTACT_EMAIL` environment variable is compiled into `conf/contact.config.js` and stored in `siteConfig('CONTACT_EMAIL')` as a Base64-encoded payload (UTF-8), so plain addresses do not appear verbatim in static HTML. When migrating or adding theme UI, pick the right helper or you will see garbled `mailto:` targets or wrong Gravatar hashes.
+
+| Scenario | Do | Don't |
+| --- | --- | --- |
+| Icon/link opens the system mail client | Use `handleEmailClick` (below) | `href={\`mailto:${siteConfig('CONTACT_EMAIL')}\`}` |
+| Footer or copy shows the address | `resolveContactEmail(siteConfig('CONTACT_EMAIL'))` | Render `siteConfig('CONTACT_EMAIL')` directly |
+| md5 for Gravatar | Hash **lowercased** plaintext from `resolveContactEmail` | md5 the encrypted string |
+| Server-generated text (e.g. `security.txt`) | `resolveContactEmail` before `mailto:` | Write the encrypted blob into the file |
+
+**Click-to-mail pattern (match `themes/next/components/SocialButton.js`):**
+
+```javascript
+import { useRef } from 'react'
+import { handleEmailClick } from '@/lib/plugins/mailEncrypt'
+import { siteConfig } from '@/lib/config'
+
+const emailIcon = useRef(null)
+const CONTACT_EMAIL = siteConfig('CONTACT_EMAIL')
+
+// ...
+{CONTACT_EMAIL && (
+  <a
+    onClick={e => handleEmailClick(e, emailIcon, CONTACT_EMAIL)}
+    title='email'
+    className='cursor-pointer'
+    ref={emailIcon}>
+    {/* icon */}
+  </a>
+)}
+```
+
+Helpers live in `lib/plugins/mailEncrypt.js`: `handleEmailClick`, `decryptEmail`, `resolveContactEmail`.
+
+## 8) Fuwari Migration Notes
 
 For `themes/fuwari`, these specifics are already applied:
 
@@ -123,15 +158,16 @@ For `themes/fuwari`, these specifics are already applied:
 - Independent TOC, sidebar widgets, and right-float actions
 - Flip contact card support via global `FlipCard`
 
-## 8) Common Pitfalls
+## 9) Common Pitfalls
 
 - Hardcoded menu paths without `customMenu` support.
 - Reusing another theme's UI components directly.
 - Local-only dark mode toggle that ignores global context.
 - Missing `post?.toc` and `notice?.blockMap` guards.
 - Forgetting to expose new behaviors in theme config.
+- Contact email: raw `mailto:` with encrypted config or missing `handleEmailClick` / `resolveContactEmail` (see section 7).
 
-## 9) Visual Fidelity Checklist (Fuwari-like Themes)
+## 10) Visual Fidelity Checklist (Fuwari-like Themes)
 
 - **Layout orientation**: desktop default should be left functional sidebar + right content feed.
 - **Hero full width**: avoid `calc(50% - 50vw)` scrollbar offset drift; use stable center transform strategy.
