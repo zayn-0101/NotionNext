@@ -148,7 +148,52 @@ const CONTACT_EMAIL = siteConfig('CONTACT_EMAIL')
 
 Helpers live in `lib/plugins/mailEncrypt.js`: `handleEmailClick`, `decryptEmail`, `resolveContactEmail`.
 
-## 8) Fuwari Migration Notes
+## 8) Contributing a theme to the main repo: preview images and Theme Switch copy
+
+You can keep a custom theme under **`themes/<theme-id>/`** locally or in your fork without opening a PR.
+
+If you want the theme **merged into the official NotionNext repository**, you must also ship assets and manifest entries used by the **theme switcher** when `THEME_SWITCH` / `NEXT_PUBLIC_THEME_SWITCH` is enabled: cover previews plus human-readable name and summary.
+
+### 8.1 Preview assets directory and naming (fixed location)
+
+Commit static previews under:
+
+**`public/images/themes-preview/`**
+
+| File | Purpose |
+| --- | --- |
+| `<theme-id>.png` | Baseline image; **must** match the folder name under `themes/` (lowercase), e.g. `endspace.png`. Used as `LazyImage` **`fallbackSrc`**. |
+| `<theme-id>.webp` | **Strongly recommended**; convert from PNG (`cwebp`, Squoosh, ImageMagick, etc.). Used as the preferred **`src`** for smaller payloads. |
+
+By default, `getThemeSwitchMeta()` resolves **`/images/themes-preview/<id>.webp`** and **`.png`**. Submit both in PRs when possible.
+
+### 8.2 Title and summary (`conf/themeSwitch.manifest.js`)
+
+Edit **`conf/themeSwitch.manifest.js`** and add an entry under **`THEME_SWITCH_MANIFEST`** keyed by the theme id (**same** as the directory under `themes/`):
+
+- **`name`** (optional): label in the switcher; if omitted, the id is auto-formatted.
+- **`summary`** (recommended): one-line blurb under the card title.
+- **`cover`** / **`coverWebp`** (optional): custom image URLs. If omitted, the paths in §8.1 apply. If you only ship PNG for now, set **`coverWebp`** to **`''`** for that theme so the UI uses PNG only.
+- **`tier`** (optional): **`'free'`** or **`'paid'`**; defaults to **`'free'`**, which shows a Free-style badge in the switcher. For future paid themes, set **`tier`** to **`'paid'`** to show the paid label.
+
+`components/ThemeSwitch.js` reads metadata via **`getThemeSwitchMeta()`**; you do not duplicate this inside the theme folder.
+
+### 8.3 Docs and review
+
+- Long-form theme notes still belong under **`docs/themes/`** (see the visual fidelity checklist for doc placement).
+- In the PR description, list preview files and any new or updated manifest entries.
+
+### 8.4 For developers: open source today and future commercial themes (roadmap)
+
+This subsection is for **theme authors**: how we collaborate in the open repo today, and **possible** future options for paid themes. Final policies and timelines will be announced officially.
+
+- **Acknowledging the work**: shipping and maintaining a theme (layout, UX, breakpoints, and ongoing compatibility) is real effort. Contributing redistributable themes to the **public NotionNext repo** remains highly valued.
+- **Current path**: we still encourage **free-to-use** themes via **PRs to the main GitHub repository**, following §8.1–§8.3 for previews and manifest. Local or private-fork use is unrestricted.
+- **Future direction (not live yet)**: as the ecosystem matures, we **plan to allow paid theme submissions** so authors can be compensated while users get maintained, high-quality work.
+- **Planned shape (illustrative only)**: a **separate private Git repository** may be introduced for authors to **publish and version themes**; themes could be **priced**, and after **purchase**, buyers receive what they need to **privately deploy** the theme on their own sites (exact license, updates, and support will be defined at launch).
+- **Relation to code**: the manifest **`tier`** field (`free` / `paid`) is for **UI labeling** in the theme switcher. **Billing, entitlements, delivery, and private deployment will not rely on manifest alone**; dedicated docs and tooling will ship when the program goes live.
+
+## 9) Fuwari Migration Notes
 
 For `themes/fuwari`, these specifics are already applied:
 
@@ -158,7 +203,7 @@ For `themes/fuwari`, these specifics are already applied:
 - Independent TOC, sidebar widgets, and right-float actions
 - Flip contact card support via global `FlipCard`
 
-## 9) Common Pitfalls
+## 10) Common Pitfalls
 
 - Hardcoded menu paths without `customMenu` support.
 - Reusing another theme's UI components directly.
@@ -167,7 +212,7 @@ For `themes/fuwari`, these specifics are already applied:
 - Forgetting to expose new behaviors in theme config.
 - Contact email: raw `mailto:` with encrypted config or missing `handleEmailClick` / `resolveContactEmail` (see section 7).
 
-## 10) Visual Fidelity Checklist (Fuwari-like Themes)
+## 11) Visual Fidelity Checklist (Fuwari-like Themes)
 
 - **Layout orientation**: desktop default should be left functional sidebar + right content feed.
 - **Hero full width**: avoid `calc(50% - 50vw)` scrollbar offset drift; use stable center transform strategy.
