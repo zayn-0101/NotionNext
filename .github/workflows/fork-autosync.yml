@@ -4,6 +4,10 @@ on:
   schedule:
     - cron: '17 21 * * *'
   workflow_dispatch:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/fork-autosync.yml'
 
 permissions:
   contents: read
@@ -62,7 +66,7 @@ jobs:
 
   update:
     needs: check
-    if: needs.check.outputs.has_updates == 'true'
+    if: github.event_name != 'pull_request' && needs.check.outputs.has_updates == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
