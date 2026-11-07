@@ -74,7 +74,7 @@ const LayoutBase = props => {
       <PostHero {...props} />
     ) : null
 
-  const floatRightBottom = post ? <JumpToCommentButton /> : null
+  const floatRightBottom = post ? <JumpToCommentButton post={post} /> : null
 
   // Algolia搜索框
   const searchModal = useRef(null)
@@ -263,7 +263,7 @@ const LayoutSlug = props => {
               {/* 文章信息 */}
               {post?.type && post?.type === 'Post' && (
                 <>
-                  <div data-wow-delay='.2s' className='wow fadeInUp px-10'>
+                  <div data-wow-delay='.2s' className='wow fadeInUp px-2 sm:px-6 lg:px-10'>
                     <ArticleInfo post={post} />
                   </div>
                   <hr />

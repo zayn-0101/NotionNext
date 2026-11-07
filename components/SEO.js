@@ -1,5 +1,6 @@
 import { siteConfig } from '@/lib/config'
 import { useGlobal } from '@/lib/global'
+import { getPwaConfig } from '@/lib/pwa'
 import { createSiteUrl, normalizeSiteUrl } from '@/lib/sitemap-utils'
 import { isHttpLink, loadExternalResource } from '@/lib/utils'
 import Head from 'next/head'
@@ -26,6 +27,7 @@ const SEO = props => {
   const hasWebFontUrl = Array.isArray(webFontUrl)
     ? webFontUrl.filter(Boolean).length > 0
     : Boolean(webFontUrl)
+  const hasGoogleFontsUrl = containsGoogleFontsUrl(webFontUrl)
 
   useEffect(() => {
     if (!hasWebFontUrl) return
@@ -66,6 +68,15 @@ const SEO = props => {
   const title = meta?.title || TITLE
   const description = meta?.description || `${siteInfo?.description}`
   const type = meta?.type === 'Post' ? 'article' : meta?.type || 'website'
+  const ENABLE_RSS = siteConfig('ENABLE_RSS')
+  // 订阅文件的绝对地址，与 lib/utils/rss.js 的静态输出路径保持一致
+  const rssSubPath = String(SUB_PATH || '')
+    .trim()
+    .replace(/^\/+|\/+$/g, '')
+  const rssUrl = createSiteUrl(
+    rssSubPath ? `${LINK}/${rssSubPath}` : LINK,
+    'rss/feed.xml'
+  )
   const language =
     router?.locale || siteConfig('LANG', 'zh-CN', NOTION_CONFIG)
   const lang = String(language).replace('-', '_') // Facebook OpenGraph 要 zh_CN 這樣的格式才抓得到語言
@@ -88,6 +99,10 @@ const SEO = props => {
   )
 
   const BLOG_FAVICON = siteConfig('BLOG_FAVICON', null, NOTION_CONFIG)
+  const pwaEnabled = siteConfig('PWA_ENABLE', false, NOTION_CONFIG)
+  const pwaConfig = pwaEnabled
+    ? getPwaConfig({ siteInfo, notionConfig: NOTION_CONFIG })
+    : null
 
   const COMMENT_WEBMENTION_ENABLE = siteConfig(
     'COMMENT_WEBMENTION_ENABLE',
@@ -120,7 +135,10 @@ const SEO = props => {
     <Head>
       <link rel='icon' href={favicon} />
       <title>{title}</title>
-      <meta name='theme-color' content={BACKGROUND_DARK} />
+      <meta
+        name='theme-color'
+        content={pwaEnabled ? pwaConfig.themeColor : BACKGROUND_DARK}
+      />
       <meta
         name='viewport'
         content='width=device-width, initial-scale=1.0, maximum-scale=5.0, minimum-scale=1.0'
@@ -132,6 +150,13 @@ const SEO = props => {
       <meta name='apple-mobile-web-app-capable' content='yes' />
       <meta name='apple-mobile-web-app-status-bar-style' content='default' />
       <meta name='apple-mobile-web-app-title' content={title} />
+      {pwaEnabled && (
+        <>
+          <link rel='manifest' href='/manifest.json' />
+          <meta name='application-name' content={pwaConfig.name} />
+          <link rel='apple-touch-icon' href={pwaConfig.icon} />
+        </>
+      )}
 
       {/* 搜索引擎验证 */}
       {SEO_GOOGLE_SITE_VERIFICATION && (
@@ -149,6 +174,15 @@ const SEO = props => {
 
       {/* 基础SEO元数据 */}
       <link rel='canonical' href={url} />
+      {/* RSS 自动发现：浏览器地址栏与阅读器依赖此声明 */}
+      {ENABLE_RSS && rssUrl && (
+        <link
+          rel='alternate'
+          type='application/rss+xml'
+          title={`${TITLE} RSS`}
+          href={rssUrl}
+        />
+      )}
       <meta name='keywords' content={keywords} />
       <meta name='description' content={description} />
       <meta name='author' content={AUTHOR} />
@@ -234,10 +268,12 @@ const SEO = props => {
       />
 
       {/* DNS预取和预连接 */}
-      {hasWebFontUrl && <link rel='dns-prefetch' href='//fonts.googleapis.com' />}
+      {hasGoogleFontsUrl && (
+        <link rel='dns-prefetch' href='//fonts.googleapis.com' />
+      )}
       <link rel='dns-prefetch' href='//www.google-analytics.com' />
       <link rel='dns-prefetch' href='//www.googletagmanager.com' />
-      {hasWebFontUrl && (
+      {hasGoogleFontsUrl && (
         <link
           rel='preconnect'
           href='https://fonts.gstatic.com'
@@ -320,6 +356,18 @@ export const generateStructuredData = (
   }
 
   return baseData
+}
+
+const containsGoogleFontsUrl = fontUrl => {
+  const urls = Array.isArray(fontUrl) ? fontUrl : [fontUrl]
+
+  return urls.filter(Boolean).some(url => {
+    try {
+      return new URL(url).hostname === 'fonts.googleapis.com'
+    } catch {
+      return false
+    }
+  })
 }
 
 const getAbsoluteImageUrl = (image, siteUrl) => {

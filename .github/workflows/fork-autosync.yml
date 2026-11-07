@@ -1,0 +1,91 @@
+name: Keep fork synchronized
+
+on:
+  schedule:
+    - cron: '17 21 * * *'
+  workflow_dispatch:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/fork-autosync.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: fork-autosync
+  cancel-in-progress: false
+
+jobs:
+  check:
+    if: github.repository == 'zayn-0101/NotionNext'
+    runs-on: ubuntu-latest
+    outputs:
+      has_updates: ${{ steps.merge.outputs.has_updates }}
+      base_sha: ${{ steps.merge.outputs.base_sha }}
+      upstream_sha: ${{ steps.merge.outputs.upstream_sha }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: false
+      - id: merge
+        name: Prepare the exact upstream changes
+        shell: bash
+        run: |
+          set -euo pipefail
+          git remote add upstream https://github.com/notionnext-org/NotionNext.git
+          git fetch --no-tags upstream main
+          base_sha=$(git rev-parse HEAD)
+          upstream_sha=$(git rev-parse FETCH_HEAD)
+          echo "base_sha=$base_sha" >> "$GITHUB_OUTPUT"
+          echo "upstream_sha=$upstream_sha" >> "$GITHUB_OUTPUT"
+          if git merge-base --is-ancestor "$upstream_sha" "$base_sha"; then
+            echo 'has_updates=false' >> "$GITHUB_OUTPUT"
+            echo 'Already synchronized.'
+            exit 0
+          fi
+          echo 'has_updates=true' >> "$GITHUB_OUTPUT"
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git merge --no-edit --no-ff "$upstream_sha"
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        if: steps.merge.outputs.has_updates == 'true'
+        with:
+          node-version-file: .nvmrc
+          cache: yarn
+      - name: Install dependencies and run checks
+        if: steps.merge.outputs.has_updates == 'true'
+        run: |
+          set -euo pipefail
+          yarn install --frozen-lockfile
+          yarn lint
+          yarn type-check
+          yarn test --passWithNoTests
+
+  update:
+    needs: check
+    if: github.event_name != 'pull_request' && needs.check.outputs.has_updates == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: main
+          fetch-depth: 0
+          token: ${{ secrets.FORK_SYNC_TOKEN }}
+      - name: Merge the tested commit and update main
+        shell: bash
+        env:
+          EXPECTED_BASE: ${{ needs.check.outputs.base_sha }}
+          TESTED_UPSTREAM: ${{ needs.check.outputs.upstream_sha }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_BASE"
+          git remote add upstream https://github.com/notionnext-org/NotionNext.git
+          git fetch --no-tags upstream main
+          git cat-file -e "${TESTED_UPSTREAM}^{commit}"
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git merge --no-edit --no-ff "$TESTED_UPSTREAM"
+          git push origin HEAD:refs/heads/main
