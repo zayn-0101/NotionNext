@@ -1,91 +1,69 @@
-name: Keep fork synchronized
+# Isolated test only: place this file on the named validation branch at
+# .github/workflows/fork-autosync.yml. Never install this version on main.
+# The default branch must already contain a workflow at the same path with
+# workflow_dispatch enabled, so the GitHub Actions UI can dispatch this test.
+name: Fork token write check (isolated branch)
 
 on:
-  schedule:
-    - cron: '17 21 * * *'
   workflow_dispatch:
-  pull_request:
-    branches: [main]
-    paths:
-      - '.github/workflows/fork-autosync.yml'
 
 permissions:
   contents: read
 
 concurrency:
-  group: fork-autosync
+  group: fork-token-write-check
   cancel-in-progress: false
 
 jobs:
-  check:
-    if: github.repository == 'zayn-0101/NotionNext'
+  verify:
+    if: >-
+      github.repository == 'zayn-0101/NotionNext' &&
+      github.ref == 'refs/heads/codex/fork-sync-write-check-20261108'
     runs-on: ubuntu-latest
-    outputs:
-      has_updates: ${{ steps.merge.outputs.has_updates }}
-      base_sha: ${{ steps.merge.outputs.base_sha }}
-      upstream_sha: ${{ steps.merge.outputs.upstream_sha }}
     steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-        with:
-          ref: main
-          fetch-depth: 0
-          persist-credentials: false
-      - id: merge
-        name: Prepare the exact upstream changes
+      - name: Verify token authentication
+        env:
+          GH_TOKEN: ${{ secrets.FORK_SYNC_TOKEN }}
         shell: bash
         run: |
           set -euo pipefail
-          git remote add upstream https://github.com/notionnext-org/NotionNext.git
-          git fetch --no-tags upstream main
-          base_sha=$(git rev-parse HEAD)
-          upstream_sha=$(git rev-parse FETCH_HEAD)
-          echo "base_sha=$base_sha" >> "$GITHUB_OUTPUT"
-          echo "upstream_sha=$upstream_sha" >> "$GITHUB_OUTPUT"
-          if git merge-base --is-ancestor "$upstream_sha" "$base_sha"; then
-            echo 'has_updates=false' >> "$GITHUB_OUTPUT"
-            echo 'Already synchronized.'
-            exit 0
+          if [[ -z "$GH_TOKEN" ]]; then
+            echo '::error::FORK_SYNC_TOKEN is missing.'
+            exit 1
           fi
-          echo 'has_updates=true' >> "$GITHUB_OUTPUT"
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git merge --no-edit --no-ff "$upstream_sha"
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
-        if: steps.merge.outputs.has_updates == 'true'
-        with:
-          node-version-file: .nvmrc
-          cache: yarn
-      - name: Install dependencies and run checks
-        if: steps.merge.outputs.has_updates == 'true'
-        run: |
-          set -euo pipefail
-          yarn install --frozen-lockfile
-          yarn lint
-          yarn type-check
-          yarn test --passWithNoTests
+          if ! token_owner=$(gh api user --jq '.login'); then
+            echo '::error::FORK_SYNC_TOKEN could not authenticate.'
+            exit 1
+          fi
+          token_owner=$(printf '%s' "$token_owner" | LC_ALL=C tr '[:upper:]' '[:lower:]')
+          repository_owner=$(printf '%s' "$GITHUB_REPOSITORY_OWNER" | LC_ALL=C tr '[:upper:]' '[:lower:]')
+          if [[ "$token_owner" != "$repository_owner" ]]; then
+            echo '::error::FORK_SYNC_TOKEN belongs to a different account.'
+            exit 1
+          fi
+          echo 'Token authenticated as the repository owner.'
 
-  update:
-    needs: check
-    if: github.event_name != 'pull_request' && needs.check.outputs.has_updates == 'true'
-    runs-on: ubuntu-latest
-    steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
-          ref: main
+          ref: codex/fork-sync-write-check-20261108
           fetch-depth: 0
           token: ${{ secrets.FORK_SYNC_TOKEN }}
-      - name: Merge the tested commit and update main
+
+      - name: Test writing a workflow file on the isolated branch
         shell: bash
-        env:
-          EXPECTED_BASE: ${{ needs.check.outputs.base_sha }}
-          TESTED_UPSTREAM: ${{ needs.check.outputs.upstream_sha }}
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD)" = "$EXPECTED_BASE"
-          git remote add upstream https://github.com/notionnext-org/NotionNext.git
-          git fetch --no-tags upstream main
-          git cat-file -e "${TESTED_UPSTREAM}^{commit}"
+          branch='codex/fork-sync-write-check-20261108'
+          workflow='.github/workflows/fork-autosync.yml'
+          if [[ "$(git rev-parse HEAD)" != "$GITHUB_SHA" ]]; then
+            echo '::error::The branch changed after this run was requested.'
+            exit 1
+          fi
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git merge --no-edit --no-ff "$TESTED_UPSTREAM"
-          git push origin HEAD:refs/heads/main
+          printf '\n# Token write validation run %s\n' "$GITHUB_RUN_ID" >> "$workflow"
+          git add -- "$workflow"
+          git diff --cached --check
+          git commit -m '验证同步令牌写入权限'
+          git push origin "HEAD:refs/heads/$branch"
+          echo 'Token wrote a workflow file to the isolated branch.'
